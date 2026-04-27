@@ -1,3 +1,4 @@
+from core.serial_reader import SerialReaderThread
 from PyQt5.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QPushButton
 from ui.plot_manager import PlotManager
 from ui.transaction_log import TransactionLog
@@ -59,6 +60,12 @@ class MainWindow(QMainWindow):
         # Kết nối các tín hiệu từ ControlPanel
         self.control_panel.on_decoder_added.connect(self.handle_new_decoder)
         self.control_panel.btn_clear.clicked.connect(self.clear_decoders)
+
+        # --- KHỞI TẠO LUỒNG ĐỌC SERIAL ---
+        # LƯU Ý: Bạn cần đổi '/dev/ttyUSB0' thành cổng COM thực tế của bạn (VD: 'COM3' trên Windows)
+        self.serial_thread = SerialReaderThread(port='/dev/ttyUSB0', baudrate=921600)
+        self.serial_thread.on_data_received.connect(self.process_real_data)
+        self.serial_thread.on_status_update.connect(self.update_status_log)
         
         # Lắp ráp hai bảng vào giao diện chính
         self.main_layout.addWidget(self.left_panel, stretch=8)
@@ -92,31 +99,47 @@ class MainWindow(QMainWindow):
         self.transaction_log.update_logs([])
 
     def run_analysis_flow(self):
-        """
-        Luồng xử lý chính: 
-        Thu thập -> Vẽ sóng -> Giải mã đa hình -> Sắp xếp thời gian -> Hiển thị Log.
-        """
-        # 1. Thu thập dữ liệu (Hiện tại là Mock, sau này sẽ gọi SerialReader)
-        t, buf = MockDataGenerator.get_8ch_mock_data()
-        sample_rate = 500000 # 500 kHz theo thiết kế hiện tại
+        """Thay vì tự sinh data giả, hàm này giờ sẽ ra lệnh cho SerialThread khởi động."""
+        self.transaction_log.update_logs([{'time': '-', 'channel': 'SYS', 'protocol': 'INFO', 'data': 'Đang chờ ESP32...'}])
         
-        # 2. Cập nhật dữ liệu lên đồ thị
-        self.plot_manager.update_data(t, buf)
+        # Bắt đầu luồng đọc USB (Luồng này sẽ tự động gửi chữ 'S' xuống ESP32)
+        if not self.serial_thread.isRunning():
+            self.serial_thread.start()
+
+    def process_real_data(self, sample_rate, buffer_array):
+        """Hàm này tự động kích hoạt khi SerialThread ném mảng numpy hoàn chỉnh về."""
+        # Dừng luồng đọc lại để tránh nhận rác
+        self.serial_thread.stop()
         
-        # 3. Thực hiện giải mã thông qua tất cả các bộ giải mã đang hoạt động
+        # 1. Vẽ lên đồ thị
+        # Tạo mảng thời gian tương ứng với buffer nhận được
+        import numpy as np
+        num_samples = len(buffer_array)
+        t = np.arange(num_samples) / sample_rate
+        
+        self.plot_manager.update_data(t, buffer_array)
+        
+        # 2. Giải mã bằng các Decoder đang kích hoạt
         all_transactions = []
         for decoder in self.active_decoders:
             try:
-                # Mỗi decoder trả về một list các dictionary
-                results = decoder.decode(sample_rate, buf)
+                results = decoder.decode(sample_rate, buffer_array)
                 all_results = results if isinstance(results, list) else []
                 all_transactions.extend(all_results)
             except Exception as e:
-                print(f"Lỗi trong quá trình giải mã {type(decoder).__name__}: {e}")
-        
-        # 4. Sắp xếp các giao dịch theo trình tự thời gian thực tế
-        # Sử dụng 'time_val' (float) để đảm bảo độ chính xác cao hơn chuỗi văn bản
+                print(f"Lỗi giải mã: {e}")
+                
         all_transactions.sort(key=lambda x: x.get('time_val', 0) if x.get('time_val') is not None else 0)
-        
-        # 5. Đẩy kết quả cuối cùng ra bảng Log
         self.transaction_log.update_logs(all_transactions)
+
+    def update_status_log(self, msg):
+        """In các thông báo trạng thái của cổng COM lên bảng Log."""
+        entry = {
+            'time': '-', 'channel': 'SYSTEM', 'protocol': 'SERIAL', 'data': msg
+        }
+        # Thêm vào dòng đầu tiên của bảng log hiện tại
+        row = self.transaction_log.rowCount()
+        self.transaction_log.insertRow(row)
+        for col, key in enumerate(['time', 'channel', 'protocol', 'data']):
+            from PyQt5.QtWidgets import QTableWidgetItem
+            self.transaction_log.setItem(row, col, QTableWidgetItem(entry[key]))
