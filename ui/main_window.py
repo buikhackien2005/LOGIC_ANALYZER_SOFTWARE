@@ -62,8 +62,9 @@ class MainWindow(QMainWindow):
         self.control_panel.btn_clear.clicked.connect(self.clear_decoders)
 
         # --- KHỞI TẠO LUỒNG ĐỌC SERIAL ---
-        # LƯU Ý: Bạn cần đổi '/dev/ttyUSB0' thành cổng COM thực tế của bạn (VD: 'COM3' trên Windows)
-        self.serial_thread = SerialReaderThread(port='/dev/ttyUSB0', baudrate=921600)
+        # LƯU Ý: Bạn cần đổi '/dev/ttyACM0' thành cổng COM thực tế của bạn (VD: 'COM3' trên Windows)
+        # stm32 use ACM0, esp32 use USB0
+        self.serial_thread = SerialReaderThread(port='/dev/ttyACM0', baudrate=921600)
         self.serial_thread.on_data_received.connect(self.process_real_data)
         self.serial_thread.on_status_update.connect(self.update_status_log)
         

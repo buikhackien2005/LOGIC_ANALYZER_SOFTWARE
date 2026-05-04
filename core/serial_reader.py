@@ -22,7 +22,8 @@ class SerialReaderThread(QThread):
         self.raw_buffer = bytearray()
         
         # Tốc độ lấy mẫu mặc định (Sẽ đồng bộ với Firmware sau)
-        self.sample_rate = 500000 
+        self.sample_rate = 100000 
+        # 100KHz for stm32, 500KHz for esp32
 
     def run(self):
         """Hàm này tự động chạy trong 1 luồng (thread) riêng biệt khi gọi start()"""
