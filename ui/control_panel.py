@@ -9,7 +9,17 @@ class ControlPanel(QWidget):
 
     def __init__(self):
         super().__init__()
-        self.setStyleSheet("color: white;")
+        # Giữ nền sáng mặc định của OS, ép chữ thành màu đen
+        self.setStyleSheet("""
+            QWidget {
+                color: #000000;
+            }
+            QGroupBox {
+                border: 1px solid #AAA;
+                margin-top: 15px;
+                font-weight: bold;
+            }
+        """)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
 

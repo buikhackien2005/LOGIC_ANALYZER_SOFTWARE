@@ -51,6 +51,24 @@ class MainWindow(QMainWindow):
         self.btn_run.clicked.connect(self.run_analysis_flow)
         self.left_layout.addWidget(self.btn_run)
         
+        # --- THÊM CODE MỚI VÀO ĐÂY ---
+        self.btn_mock = QPushButton("TEST: Load Mock Data (Offline)")
+        self.btn_mock.setStyleSheet("""
+            QPushButton {
+                padding: 10px; 
+                background-color: #007ACC; 
+                color: white; 
+                font-weight: bold; 
+                border-radius: 4px;
+                margin-top: 5px;
+                margin-bottom: 10px;
+            }
+            QPushButton:hover { background-color: #005A9E; }
+        """)
+        self.btn_mock.clicked.connect(self.run_mock_test)
+        self.left_layout.addWidget(self.btn_mock)
+        # ----------------------------
+        
         # Thành phần hiển thị bảng Log
         self.transaction_log = TransactionLog()
         self.left_layout.addWidget(self.transaction_log, stretch=3)
@@ -64,7 +82,7 @@ class MainWindow(QMainWindow):
         # --- KHỞI TẠO LUỒNG ĐỌC SERIAL ---
         # LƯU Ý: Bạn cần đổi '/dev/ttyACM0' thành cổng COM thực tế của bạn (VD: 'COM3' trên Windows)
         # stm32 use ACM0, esp32 use USB0
-        self.serial_thread = SerialReaderThread(port='/dev/ttyACM0', baudrate=921600)
+        self.serial_thread = SerialReaderThread(port='/dev/ttyUSB0', baudrate=921600)
         self.serial_thread.on_data_received.connect(self.process_real_data)
         self.serial_thread.on_status_update.connect(self.update_status_log)
         
@@ -144,3 +162,14 @@ class MainWindow(QMainWindow):
         for col, key in enumerate(['time', 'channel', 'protocol', 'data']):
             from PyQt5.QtWidgets import QTableWidgetItem
             self.transaction_log.setItem(row, col, QTableWidgetItem(entry[key]))
+
+    def run_mock_test(self):
+        """Mô phỏng việc nhận dữ liệu hoàn chỉnh để kiểm thử UI và thuật toán."""
+        self.update_status_log("Đang sinh dữ liệu mô phỏng (Mock Data)...")
+        
+        # Lấy dữ liệu từ file sinh giả lập
+        t, buffer_array = MockDataGenerator.get_8ch_mock_data()
+        sample_rate = 500000 
+        
+        # Bơm thẳng dữ liệu giả vào luồng xử lý chính như thể nó vừa được gửi từ STM32 lên
+        self.process_real_data(sample_rate, buffer_array)
