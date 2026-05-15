@@ -1,3 +1,5 @@
+from PyQt5.QtWidgets import QFileDialog, QMessageBox # Thêm thư viện hộp thoại
+from utils.data_exporter import VCDExporter          # Import thuật toán xuất file bạn vừa viết
 import numpy as np
 from PyQt5.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QTableWidgetItem
 from ui.plot_manager import PlotManager
@@ -75,6 +77,27 @@ class MainWindow(QMainWindow):
         self.btn_mock.clicked.connect(self.run_mock_test)
         self.left_layout.addWidget(self.btn_mock)
         
+        # --- THÊM CODE MỚI BƯỚC 2 VÀO ĐÂY ---
+        self.btn_export = QPushButton("EXPORT: Save as .vcd (Standard)")
+        self.btn_export.setStyleSheet("""
+            QPushButton {
+                padding: 10px; 
+                background-color: #E67E22; /* Màu cam nổi bật */
+                color: white; 
+                font-weight: bold; 
+                border-radius: 4px;
+                margin-bottom: 10px;
+            }
+            QPushButton:hover { background-color: #D35400; }
+        """)
+        self.btn_export.clicked.connect(self.export_vcd_action)
+        self.left_layout.addWidget(self.btn_export)
+        
+        # Biến lưu trữ dữ liệu tạm để chờ xuất file
+        self.current_buffer = None
+        self.current_sample_rate = 500000
+        # ------------------------------------
+        
         self.transaction_log = TransactionLog()
         self.left_layout.addWidget(self.transaction_log, stretch=3)
         
@@ -131,6 +154,11 @@ class MainWindow(QMainWindow):
     def process_real_data(self, sample_rate, buffer_array):
         """Hàm này tự động kích hoạt khi SerialThread ném mảng numpy hoàn chỉnh về (hoặc khi gọi Mock Data)."""
         self.serial_thread.stop()
+
+        # --- THÊM 2 DÒNG NÀY ĐỂ LƯU TRỮ DỮ LIỆU CHỜ EXPORT ---
+        self.current_buffer = buffer_array
+        self.current_sample_rate = sample_rate
+        # ----------------------------------------------------
         
         num_samples = len(buffer_array)
         t = np.arange(num_samples) / sample_rate
@@ -170,3 +198,34 @@ class MainWindow(QMainWindow):
         
         # Bơm thẳng dữ liệu giả vào luồng xử lý chính
         self.process_real_data(sample_rate, buffer_array)
+
+    # --- THÊM HÀM NÀY XUỐNG CUỐI FILE MAIN_WINDOW.PY ---
+    def export_vcd_action(self):
+        """Mở hộp thoại lưu file và gọi thuật toán xuất VCD."""
+        # Kiểm tra xem đã có dữ liệu để xuất chưa
+        if self.current_buffer is None or len(self.current_buffer) == 0:
+            QMessageBox.warning(self, "Lỗi Export", "Chưa có dữ liệu sóng! Hãy chạy Analysis hoặc Mock Data trước.")
+            return
+
+        # Mở hộp thoại chọn nơi lưu file
+        options = QFileDialog.Options()
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, 
+            "Lưu file Value Change Dump", 
+            "logic_capture.vcd", # Tên file mặc định
+            "VCD Files (*.vcd);;All Files (*)", 
+            options=options
+        )
+
+        # Nếu người dùng đã chọn đường dẫn và bấm Save
+        if file_path:
+            try:
+                self.update_status_log(f"Đang xuất file VCD ra: {file_path}...")
+                
+                # Gọi thuật toán ở Bước 1
+                VCDExporter.export_to_vcd(file_path, self.current_sample_rate, self.current_buffer)
+                
+                self.update_status_log("Xuất file VCD thành công! Có thể mở bằng PulseView.")
+                QMessageBox.information(self, "Thành công", f"Đã lưu thành công file:\n{file_path}")
+            except Exception as e:
+                QMessageBox.critical(self, "Lỗi", f"Không thể ghi file: {str(e)}")
